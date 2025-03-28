@@ -42,6 +42,12 @@
             text-shadow: 1px 1px 2px var(--shadow-color);
         }
 
+        .status {
+            font-size: 1.2em;
+            margin: 10px;
+            color: #555;
+        }
+
         /* Form and Buttons */
         .controls {
             display: flex;
@@ -294,10 +300,12 @@
         <button id="createRoomButton" onclick="createRoom()">Create Room</button>
         <input type="text" id="roomInput" placeholder="Enter Room ID" />
         <button id="joinRoomButton" onclick="joinRoom()">Join Room</button>
+        <button id="inviteFriendButton" onclick="inviteFriend()">Invite Friend</button>
     </div>
     <div id="roomIdDisplay" class="room-id" style="display:none;">
         Room ID: <span id="roomIdText"></span> <button onclick="copyRoomId()">Copy</button>
-    </div>
+    </div>  
+    <div id="roomStatus" class="status">Status: N/A</div>
     <div id="gameArea">
         <button id="startGameButton" onclick="startGame()" style="display:none;">Start Game</button>
         <div id="countdown" class="countdown"></div>
@@ -330,6 +338,13 @@
         let gameStarted = false;
         let completionTimes = {};
 
+        // Helper: update status text
+        function updateStatus(status) {
+            const statusElement = document.getElementById("roomStatus");
+            statusElement.innerText = "Status: " + status;
+            statusElement.style.display = "block";
+        }
+
         connection.on("RoomCreated", (id, text, userIcons) => {
             roomId = id;
             textToType = text;
@@ -339,6 +354,8 @@
             document.getElementById("roomIdDisplay").style.display = "flex";
             isCreator = true;
             document.getElementById("startGameButton").style.display = "block";
+            updateStatus("Waiting"); // Update status on room creation
+
             for (const [user, icon] of Object.entries(userIcons)) {
                 addCar(user, icon);
             }
@@ -348,6 +365,8 @@
             textToType = text;
             document.getElementById("gameText").innerText = text;
             document.getElementById("gameArea").style.display = "flex";
+            updateStatus("Waiting"); // Update status when joining a room
+
             for (const [user, icon] of Object.entries(userIcons)) {
                 addCar(user, icon);
             }
@@ -390,6 +409,7 @@
 
             // Apply blur effect when countdown starts
             gameTextElement.classList.remove("blurred");
+            updateStatus("In Progress"); // Update status when the game starts
 
             countdownElement.innerText = countdown;
             const interval = setInterval(() => {
@@ -408,7 +428,36 @@
             alert(message);
         });
 
-        connection.start().catch(err => console.error(err));
+        // Start connection and check URL for room parameter.
+        connection.start()
+            .then(() => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const roomParam = urlParams.get("room");
+                if (roomParam) {
+                    roomId = roomParam;
+                    // Assign the extracted roomId to the room input box for visibility.
+                    const roomInputBox = document.getElementById("roomInput");
+                    if (roomInputBox) {
+                        roomInputBox.value = roomId;
+                    }
+                    // Get username either from localStorage or prompt the user.
+                    username = prompt("Enter your username:");
+                    if (!username) {
+                        alert("Username is required to join the room.");
+                        return;
+                    }
+                    localStorage.setItem("username", username);
+                    // Automatically join the room.
+                    connection.invoke("JoinRoom", roomId, username)
+                        .then(() => {
+                            disableRoomButtons();
+                            // Optionally, blur the game text until the game starts.
+                            document.getElementById("gameText").classList.add("blurred");
+                        })
+                        .catch(err => console.error(err));
+                }
+            })
+            .catch(err => console.error(err));
 
         function createRoom() {
             username = document.getElementById("usernameInput").value.trim();
@@ -443,6 +492,7 @@
 
         function startGame() {
             if (!isCreator) return;
+            document.getElementById("startGameButton").disabled = true;
             connection.invoke("StartGame", roomId).catch(err => console.error(err));
         }
 
@@ -548,6 +598,10 @@
             document.getElementById("score").innerText = "0";
             document.getElementById("typingArea").value = "";
             document.getElementById("typingArea").disabled = true;
+            if (isCreator) {
+                document.getElementById("startGameButton").disabled = false;
+                document.getElementById("startGameButton").style.display = "block";
+            }
             document.getElementById("gameText").innerHTML = textToType;
             for (const user in playerCars) {
                 playerCars[user].style.left = "0%";
@@ -557,6 +611,7 @@
             if (isCreator) {
                 document.getElementById("startGameButton").style.display = "block";
             }
+            updateStatus("Waiting");
         }
 
         function copyRoomId() {
@@ -564,6 +619,17 @@
             navigator.clipboard.writeText(roomIdText).then(() => {
                 alert("Room ID copied to clipboard!");
             });
+        }
+        function inviteFriend() {
+            if (roomId === "") {
+                alert("Room is not created yet!");
+                return;
+            }
+            // Create an invite link using the current URL origin, pathname and the room parameter.
+            const inviteLink = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
+            navigator.clipboard.writeText(inviteLink).then(() => {
+                alert("Invite link copied to clipboard!");
+            }).catch(err => console.error(err));
         }
         function disableRoomButtons() {
             // Disable input fields

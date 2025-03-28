@@ -3,23 +3,32 @@ using TypingClub.Hubs;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddRouting();  // Add routing service (optional but good practice)
-builder.Services.AddSignalR();  // Add SignalR services to the container
+builder.Services.AddRouting();  // Optional but good practice
+builder.Services.AddSignalR();  // Register SignalR services
 
 // Create the app
 var app = builder.Build();
 
-// Enable static file serving from the wwwroot folder
-app.UseStaticFiles(); // This enables serving static files like HTML, CSS, JS from wwwroot
+// Enable static file serving from the wwwroot folder.
+app.UseStaticFiles();
 
-// Set up the default route to index.html
+// Redirect the root URL to index.html.
+// If a room parameter is present, pass it along in the query string.
 app.MapGet("/", async context =>
 {
-    context.Response.Redirect("/index.html"); // Redirect to index.html when the root is accessed
+    var room = context.Request.Query["room"].ToString();
+    if (!string.IsNullOrEmpty(room))
+    {
+        context.Response.Redirect($"/index.html?room={room}");
+    }
+    else
+    {
+        context.Response.Redirect("/index.html");
+    }
 });
 
-// Configure SignalR Hub
-app.MapHub<TypingHub>("/typingHub"); // This maps the SignalR hub to the "/typingHub" endpoint
+// Configure the SignalR hub endpoint.
+app.MapHub<TypingHub>("/typingHub");
 
-// Run the app
+// Run the app.
 app.Run();

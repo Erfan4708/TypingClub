@@ -31,7 +31,7 @@ namespace TypingClub.Hubs
                     room.UserIcons[username] = "image1.png"; // Fallback
                 }
             }
-
+            room.Status = Room.RoomStatus.Waiting;
             Rooms[roomId] = room;
 
             // Start timeout countdown (e.g., dispose after 10 minutes)
@@ -54,6 +54,11 @@ namespace TypingClub.Hubs
         {
             if (Rooms.TryGetValue(roomId, out var room))
             {
+                if (Rooms[roomId].Status != Room.RoomStatus.Waiting)
+                {
+                    await Clients.Caller.SendAsync("Error", "Room is busy.");
+                    return;
+                }
                 if (room.UserIcons.ContainsKey(username))
                 {
                     await Clients.Caller.SendAsync("Error", "Username already taken in this room.");
@@ -96,6 +101,7 @@ namespace TypingClub.Hubs
                     Rooms[roomId].Text = GenerateRandomParagraph();
                     await Clients.Group(roomId).SendAsync("NewTextGenerated", Rooms[roomId].Text);
                 }
+                Rooms[roomId].Status = Room.RoomStatus.InProgress;
                 await Clients.Group(roomId).SendAsync("StartCountdown");
             }
         }
