@@ -1,0 +1,583 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Typing Race Game</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        /* CSS Variables for Consistency */
+        :root {
+            --primary-color: #4CAF50;
+            --accent-color: #45a049;
+            --bg-color: #f7f9fc;
+            --text-color: #333;
+            --border-color: #ddd;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+            --font-family: 'Roboto', sans-serif;
+        }
+
+        /* Global Styles */
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: var(--font-family);
+            background: linear-gradient(135deg, #e0eafc, #cfdef3);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            text-shadow: 1px 1px 2px var(--shadow-color);
+        }
+
+        /* Form and Buttons */
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+            .controls input[type="text"] {
+                padding: 12px 15px;
+                margin: 10px;
+                border: 2px solid var(--border-color);
+                border-radius: 8px;
+                font-size: 1em;
+                outline: none;
+                transition: border-color 0.3s ease;
+                width: 250px;
+            }
+
+                .controls input[type="text"]:focus {
+                    border-color: var(--primary-color);
+                }
+
+            .controls button {
+                padding: 12px 25px;
+                margin: 10px;
+                font-size: 1em;
+                border: none;
+                border-radius: 8px;
+                background-color: var(--primary-color);
+                color: #fff;
+                cursor: pointer;
+                transition: background-color 0.3s ease, transform 0.2s ease;
+                box-shadow: 0px 4px 6px var(--shadow-color);
+            }
+
+                .controls button:hover {
+                    background-color: var(--accent-color);
+                    transform: translateY(-2px);
+                }
+
+        .room-id {
+            margin: 10px;
+            padding: 10px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0px 2px 4px var(--shadow-color);
+            display: flex;
+            align-items: center;
+            font-weight: 500;
+        }
+
+            .room-id span {
+                margin-left: 5px;
+                font-family: monospace;
+            }
+
+        /* Game Area */
+        #gameArea {
+            width: 90%;
+            max-width: 1000px;
+            background: #fff;
+            padding: 30px;
+            margin: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 10px var(--shadow-color);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+        }
+
+    #startGameButton {
+      background-color: var(--primary-color);
+      border: none;
+      border-radius: 8px;
+      padding: 12px 20px;
+      color: #fff;
+      font-size: 1.2em;
+      cursor: pointer;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+      margin-bottom: 20px;
+      box-shadow: 0px 4px 6px var(--shadow-color);
+    }
+    #startGameButton:hover {
+      background-color: var(--accent-color);
+      transform: translateY(-2px);
+    }
+
+        .countdown {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+
+        .blurred {
+            filter: blur(5px);
+            pointer-events: none;
+        }
+
+        .race-container {
+            display: flex;
+            width: 90%;
+            align-items: flex-start;
+            margin-bottom: 20px;
+            max-width: 900px;
+            margin-left: 0px;
+        }
+
+        .usernames {
+            max-width: 80px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .username-label {
+            height: 70px; /* Matches car spacing */
+            display: flex;
+            flex-direction: column;
+            justify-content: center; /* Vertically centers username and timer */
+            align-items: flex-start; /* Right-aligns content */
+            text-align: center;
+            font-size: 1.1em;
+            color: var(--text-color);
+            font-weight: 500;
+        }
+
+            .username-label .timer {
+                font-size: 0.9em;
+                color: #777;
+                margin-top: 5px; /* Adds a small separation between username and timer */
+            }
+
+        .race-track {
+            flex: 1;
+            margin-left: 20px;
+            height: 350px;
+            background: #f1f3f5;
+            border: 2px solid #bbb;
+            border-radius: 10px;
+            position: relative;
+            box-shadow: inset 0px 0px 10px var(--shadow-color);
+        }
+
+        .car {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            transition: left 0.2s ease;
+        }
+
+        /* Typing Area & Score */
+        #gameText {
+            width: 90%;
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 15px;
+            background: #f8f9fa;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 1.2em;
+            line-height: 1.5;
+            user-select: none;
+        }
+
+        #typingArea {
+            width: 90%;
+            max-width: 900px;
+            height: 120px;
+            margin: 20px auto;
+            padding: 15px;
+            font-size: 1.2em;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            outline: none;
+            resize: none;
+            transition: border-color 0.3s ease;
+        }
+
+        .score {
+            font-size: 1.5em;
+            margin-top: 10px;
+        }
+
+        /* Leaderboard */
+        .leaderboard {
+            width: 90%;
+            max-width: 900px;
+            background: #fff;
+            margin: 20px auto;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0px 2px 6px var(--shadow-color);
+        }
+
+            .leaderboard h3 {
+                margin-top: 0;
+                text-align: center;
+                font-weight: 500;
+            }
+
+            .leaderboard ul {
+                list-style: none;
+                padding: 0;
+                margin: 0;
+            }
+
+            .leaderboard li {
+                padding: 10px;
+                border-bottom: 1px solid #eee;
+                font-size: 1.1em;
+            }
+
+                .leaderboard li:last-child {
+                    border-bottom: none;
+                }
+
+        #raceTrack {
+            position: relative; /* Required for absolute positioning of cars */
+            width: 100%; /* Ensures it takes full width */
+            background: #f1f3f5; /* Optional styling */
+            border: 2px solid #bbb; /* Optional styling */
+            border-radius: 10px; /* Optional styling */
+        }
+
+        /* Responsive Design */
+        @media (max-width: 200px) {
+            .race-container {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .usernames {
+                width: 100%;
+                text-align: center;
+                margin-bottom: 15px;
+            }
+
+            .race-track {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Typing Race Game</h1>
+    <div class="controls">
+        <input type="text" id="usernameInput" placeholder="Enter your username" />
+        <button id="createRoomButton" onclick="createRoom()">Create Room</button>
+        <input type="text" id="roomInput" placeholder="Enter Room ID" />
+        <button id="joinRoomButton" onclick="joinRoom()">Join Room</button>
+    </div>
+    <div id="roomIdDisplay" class="room-id" style="display:none;">
+        Room ID: <span id="roomIdText"></span> <button onclick="copyRoomId()">Copy</button>
+    </div>
+    <div id="gameArea">
+        <button id="startGameButton" onclick="startGame()" style="display:none;">Start Game</button>
+        <div id="countdown" class="countdown"></div>
+        <div class="race-container">
+            <div class="usernames" id="usernames"></div>
+            <div class="race-track" id="raceTrack"></div>
+        </div>
+        <p id="gameText" oncopy="return false;" oncut="return false;" onpaste="return false;"></p>
+        <textarea id="typingArea" oninput="checkTyping()" disabled placeholder="Type here..."></textarea>
+        <div class="score">Your Score: <span id="score">0</span></div>
+        <div class="leaderboard">
+            <h3>Leaderboard</h3>
+            <ul id="leaderboard"></ul>
+        </div>
+    </div>
+    <script>
+        // Existing JavaScript code (SignalR setup and game logic) remains the same.
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl("/typingHub")
+            .build();
+
+        let roomId = "";
+        let textToType = "";
+        let username = "";
+        let score = 0;
+        let playerCars = {};
+        let timers = {};
+        let carIndex = 0;
+        let isCreator = false;
+        let gameStarted = false;
+        let completionTimes = {};
+
+        connection.on("RoomCreated", (id, text, userIcons) => {
+            roomId = id;
+            textToType = text;
+            document.getElementById("gameText").innerText = text;
+            document.getElementById("gameArea").style.display = "flex";
+            document.getElementById("roomIdText").innerText = id;
+            document.getElementById("roomIdDisplay").style.display = "flex";
+            isCreator = true;
+            document.getElementById("startGameButton").style.display = "block";
+            for (const [user, icon] of Object.entries(userIcons)) {
+                addCar(user, icon);
+            }
+        });
+
+        connection.on("RoomJoined", (text, userIcons) => {
+            textToType = text;
+            document.getElementById("gameText").innerText = text;
+            document.getElementById("gameArea").style.display = "flex";
+            for (const [user, icon] of Object.entries(userIcons)) {
+                addCar(user, icon);
+            }
+        });
+
+        connection.on("UserJoined", (user, icon) => {
+            addCar(user, icon);
+        });
+
+        connection.on("UpdateScores", (scores) => {
+            let leaderboard = document.getElementById("leaderboard");
+            leaderboard.innerHTML = "";
+            for (const [user, points] of Object.entries(scores)) {
+                let li = document.createElement("li");
+                li.textContent = `${user}: ${points} points`;
+                leaderboard.appendChild(li);
+                if (playerCars[user]) {
+                    let car = playerCars[user];
+                    car.style.left = `${Math.min((points / textToType.length) * 100, 100)}%`;
+                    if (points >= textToType.length) {
+                        car.style.left = "calc(100% - 50px)";
+                    }
+                }
+            }
+        });
+
+        connection.on("WinnerAnnounced", (winner, time) => {
+            completionTimes[winner] = time;
+            stopTimer(winner);
+            if (Object.keys(completionTimes).length === Object.keys(playerCars).length) {
+                showRankings();
+                resetGame();
+            }
+        });
+
+        connection.on("StartCountdown", () => {
+            let countdown = 7;
+            const countdownElement = document.getElementById("countdown");
+            const gameTextElement = document.getElementById("gameText");
+
+            // Apply blur effect when countdown starts
+            gameTextElement.classList.remove("blurred");
+
+            countdownElement.innerText = countdown;
+            const interval = setInterval(() => {
+                countdown--;
+                if (countdown > 0) {
+                    countdownElement.innerText = countdown;
+                } else {
+                    clearInterval(interval);
+                    countdownElement.innerText = "";
+                    startGameForAll();
+                }
+            }, 1000);
+        });
+
+        connection.on("Error", (message) => {
+            alert(message);
+        });
+
+        connection.start().catch(err => console.error(err));
+
+        function createRoom() {
+            username = document.getElementById("usernameInput").value.trim();
+            if (username === "") {
+                alert("Please enter a username.");
+                return;
+            }
+            connection.invoke("CreateRoom", username)
+                .then(() => {
+                    disableRoomButtons(); // Disable controls after successfully creating a room
+                    const gameTextElement = document.getElementById("gameText");
+                    gameTextElement.classList.add("blurred");
+                })
+                .catch(err => console.error(err));
+        }
+
+        function joinRoom() {
+            username = document.getElementById("usernameInput").value.trim();
+            if (username === "") {
+                alert("Please enter a username.");
+                return;
+            }
+            roomId = document.getElementById("roomInput").value;
+            connection.invoke("JoinRoom", roomId, username)
+                .then(() => {
+                    disableRoomButtons(); // Disable controls after successfully creating a room
+                    const gameTextElement = document.getElementById("gameText");
+                    gameTextElement.classList.add("blurred");
+                })
+                .catch(err => console.error(err));
+        }
+
+        function startGame() {
+            if (!isCreator) return;
+            connection.invoke("StartGame", roomId).catch(err => console.error(err));
+        }
+
+        function startGameForAll() {
+            gameStarted = true;
+            document.getElementById("typingArea").disabled = false;
+            for (const user in playerCars) {
+                startTimer(user);
+            }
+        }
+
+        function checkTyping() {
+            if (!gameStarted) return;
+            let typedText = document.getElementById("typingArea").value;
+            let correctLength = 0;
+            for (let i = 0; i < typedText.length; i++) {
+                if (typedText[i] === textToType[i]) {
+                    correctLength++;
+                } else {
+                    break;
+                }
+            }
+            score = correctLength;
+            document.getElementById("score").innerText = score;
+            const gameText = document.getElementById("gameText");
+            gameText.innerHTML = `<strong>${textToType.substring(0, correctLength)}</strong>${textToType.substring(correctLength)}`;
+            const typingArea = document.getElementById("typingArea");
+            if (typedText.length > correctLength) {
+                typingArea.style.borderColor = "red";
+            } else {
+                typingArea.style.borderColor = "";
+            }
+            connection.invoke("UpdateProgress", roomId, username, score).catch(err => console.error(err));
+        }
+
+        function addCar(user, iconUrl) {
+            if (playerCars[user]) return; // Prevent duplicate cars
+            const usernamesDiv = document.getElementById("usernames");
+            const raceTrack = document.getElementById("raceTrack");
+
+            // Add username to the usernames section
+            const userDiv = document.createElement("div");
+            userDiv.classList.add("username-label");
+            const nameSpan = document.createElement("span");
+            nameSpan.textContent = user;
+            const timerSpan = document.createElement("span");
+            timerSpan.id = `timer-${user}`;
+            timerSpan.classList.add("timer");
+            timerSpan.textContent = "00:00";
+            userDiv.appendChild(nameSpan);
+            userDiv.appendChild(timerSpan);
+            usernamesDiv.appendChild(userDiv);
+
+            // Create and position the car
+            const car = document.createElement("div");
+            car.classList.add("car");
+            car.style.top = `${carIndex * 70 + 10}px`; // Position car in its 70px lane
+            car.style.left = "0%"; // Starting position
+            car.style.backgroundImage = `url('/images/${iconUrl}')`; // Set car image
+            raceTrack.appendChild(car);
+
+            // Dynamically adjust race track height
+            raceTrack.style.height = `${(carIndex + 1) * 70}px`;
+
+            // Store car reference and increment index
+            playerCars[user] = car;
+            carIndex++;
+        }
+
+        function startTimer(user) {
+            let seconds = 0;
+            timers[user] = setInterval(() => {
+                seconds++;
+                const minutes = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                document.getElementById(`timer-${user}`).innerText = `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            }, 1000);
+        }
+
+        function stopTimer(user) {
+            clearInterval(timers[user]);
+            const timerElement = document.getElementById(`timer-${user}`);
+            completionTimes[user] = timerElement.innerText;
+        }
+
+        function showRankings() {
+            const sortedTimes = Object.entries(completionTimes).sort((a, b) => {
+                const [minA, secA] = a[1].split(":").map(Number);
+                const [minB, secB] = b[1].split(":").map(Number);
+                return (minA * 60 + secA) - (minB * 60 + secB);
+            });
+            let rankMessage = "Game Over! Rankings:\n";
+            sortedTimes.forEach((entry, index) => {
+                const [user, time] = entry;
+                rankMessage += `${index + 1}. ${user} - ${time}\n`;
+            });
+            alert(rankMessage);
+        }
+
+        function resetGame() {
+            gameStarted = false;
+            score = 0;
+            document.getElementById("score").innerText = "0";
+            document.getElementById("typingArea").value = "";
+            document.getElementById("typingArea").disabled = true;
+            document.getElementById("gameText").innerHTML = textToType;
+            for (const user in playerCars) {
+                playerCars[user].style.left = "0%";
+                document.getElementById(`timer-${user}`).innerText = "00:00";
+            }
+            completionTimes = {};
+            if (isCreator) {
+                document.getElementById("startGameButton").style.display = "block";
+            }
+        }
+
+        function copyRoomId() {
+            const roomIdText = document.getElementById("roomIdText").innerText;
+            navigator.clipboard.writeText(roomIdText).then(() => {
+                alert("Room ID copied to clipboard!");
+            });
+        }
+        function disableRoomButtons() {
+            // Disable input fields
+            document.getElementById("usernameInput").disabled = true;
+            document.getElementById("roomInput").disabled = true;
+            // Disable buttons
+            document.getElementById("createRoomButton").disabled = true;
+            document.getElementById("joinRoomButton").disabled = true;
+        }
+        connection.on("NewTextGenerated", (newText) => {
+            textToType = newText;
+            document.getElementById("gameText").innerText = newText;
+        });
+
+    </script>
+</body>
+</html>
