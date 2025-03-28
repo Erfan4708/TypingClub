@@ -142,7 +142,7 @@ namespace TypingClub.Hubs
         public Dictionary<string, int> Scores { get; set; } = new();
         public List<string> AvailableIcons { get; set; } = new List<string>
         {
-            "image1.png", "image3.svg", "image4.svg", "image6.png",
+            "image1.png", "image6.png",
             "image7.png", "image8.png", "image9.png", "image10.png", 
             "image11.png", "image12.png", "image13.png", "image14.png",
             "image15.png", "image16.png", "image17.png", "image18.png",
