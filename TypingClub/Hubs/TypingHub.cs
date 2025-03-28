@@ -21,7 +21,7 @@ namespace TypingClub.Hubs
                 if (room.AvailableIcons.Any())
                 {
                     var random = new Random();
-                    int randomIndex = random.Next(0, room.AvailableIcons.Count);
+                    int randomIndex = random.Next(room.AvailableIcons.Count);
                     string icon = room.AvailableIcons[randomIndex];
                     room.UserIcons[username] = icon;
                     room.AvailableIcons.Remove(icon);
@@ -33,9 +33,22 @@ namespace TypingClub.Hubs
             }
 
             Rooms[roomId] = room;
+
+            // Start timeout countdown (e.g., dispose after 10 minutes)
+            room.StartTimeout(TimeSpan.FromMinutes(10), RemoveRoom);
+
             await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
             await Clients.Caller.SendAsync("RoomCreated", roomId, paragraph, room.UserIcons);
         }
+
+        private void RemoveRoom(string roomId)
+        {
+            if (Rooms.TryRemove(roomId, out _))
+            {
+                Console.WriteLine($"Room {roomId} has been disposed due to inactivity.");
+            }
+        }
+
 
         public async Task JoinRoom(string roomId, string username)
         {
@@ -46,12 +59,13 @@ namespace TypingClub.Hubs
                     await Clients.Caller.SendAsync("Error", "Username already taken in this room.");
                     return;
                 }
+
                 lock (room)
                 {
                     if (room.AvailableIcons.Any())
                     {
                         var random = new Random();
-                        int randomIndex = random.Next(0, room.AvailableIcons.Count);
+                        int randomIndex = random.Next(room.AvailableIcons.Count);
                         string icon = room.AvailableIcons[randomIndex];
                         room.UserIcons[username] = icon;
                         room.AvailableIcons.Remove(icon);
@@ -62,11 +76,16 @@ namespace TypingClub.Hubs
                     }
                 }
 
+                // Reset timeout when a new user joins
+                room.ResetTimeout();
+                room.StartTimeout(TimeSpan.FromMinutes(10), RemoveRoom);
+
                 await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
                 await Clients.Caller.SendAsync("RoomJoined", room.Text, room.UserIcons);
                 await Clients.Group(roomId).SendAsync("UserJoined", username, room.UserIcons[username]);
             }
         }
+
 
         public async Task StartGame(string roomId)
         {
@@ -137,17 +156,63 @@ namespace TypingClub.Hubs
 
     public class Room
     {
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
+
         public string Id { get; set; }
         public string Text { get; set; }
         public Dictionary<string, int> Scores { get; set; } = new();
-        public List<string> AvailableIcons { get; set; } = new List<string>
+        public Dictionary<string, string> UserIcons { get; set; } = new();
+        public List<string> AvailableIcons { get; set; } = new()
         {
             "image1.png", "image6.png",
-            "image7.png", "image8.png", "image9.png", "image10.png", 
+            "image7.png", "image8.png", "image9.png", "image10.png",
             "image11.png", "image12.png", "image13.png", "image14.png",
             "image15.png", "image16.png", "image17.png", "image18.png",
             "image19.png",
         };
-        public Dictionary<string, string> UserIcons { get; set; } = new();
+
+        public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
+        public DateTime LastUpdatedDate { get; set; }
+        public DateTime? StartTime { get; set; }
+        public DateTime? EndTime { get; set; }
+        public int TimeoutMinutes { get; set; } = 10;
+        public int MaxPlayers { get; set; } = 5;
+        public string? WinningUser { get; set; }
+        public TimeSpan? WinningTime { get; set; }
+        public Dictionary<string, int> TypingSpeeds { get; set; } = new();
+        public List<string> Spectators { get; set; } = new();
+        public bool AllowSpectators { get; set; } = false;
+
+        public enum RoomStatus { Waiting, InProgress, Completed, Expired }
+        public RoomStatus Status { get; set; } = RoomStatus.Waiting;
+
+        public enum Difficulty { Easy, Medium, Hard }
+        public Difficulty DifficultyLevel { get; set; } = Difficulty.Medium;
+
+        public string Language { get; set; } = "English";
+
+        public bool IsActive => Status == RoomStatus.InProgress || Status == RoomStatus.Waiting;
+
+        public void StartTimeout(TimeSpan timeout, Action<string> removeRoomCallback)
+        {
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(timeout, _cancellationTokenSource.Token);
+                    removeRoomCallback(Id);
+                }
+                catch (TaskCanceledException)
+                {
+                    // Timeout reset or room is still active
+                }
+            });
+        }
+
+        public void ResetTimeout()
+        {
+            _cancellationTokenSource.Cancel();
+        }
     }
+
 }
