@@ -2,33 +2,17 @@ using TypingClub.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddRouting();  // Optional but good practice
-builder.Services.AddSignalR();  // Register SignalR services
+builder.Services.AddSignalR();
 
-// Create the app
 var app = builder.Build();
 
-// Enable static file serving from the wwwroot folder.
+// Serve the game client (index.html, JavaScript, CSS and icons) from the wwwroot folder.
 app.UseStaticFiles();
 
-// Redirect the root URL to index.html.
-// If a room parameter is present, pass it along in the query string.
-app.MapGet("/", async context =>
-{
-    var room = context.Request.Query["room"].ToString();
-    if (!string.IsNullOrEmpty(room))
-    {
-        context.Response.Redirect($"/index.html?room={room}");
-    }
-    else
-    {
-        context.Response.Redirect("/index.html");
-    }
-});
+// Redirect the root URL to index.html, keeping the query string so invite links like "/?room=<id>" still work.
+app.MapGet("/", (HttpContext context) => Results.Redirect("/index.html" + context.Request.QueryString));
 
-// Configure the SignalR hub endpoint.
+// SignalR hub used by the client for all room and race messages.
 app.MapHub<TypingHub>("/typingHub");
 
-// Run the app.
 app.Run();
