@@ -1,57 +1,53 @@
-﻿namespace TypingClub.Models
+namespace TypingClub.Models
 {
     public class Room
     {
-        private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private CancellationTokenSource _timeoutTokenSource = new();
 
         public required string Id { get; set; }
         public required string Text { get; set; }
+
+        // Number of correctly typed characters per username.
         public Dictionary<string, int> Scores { get; set; } = new();
+
+        // Icon file name (from wwwroot/images) assigned to each username.
         public Dictionary<string, string> UserIcons { get; set; } = new();
-        public List<string> AvailableIcons { get; set; } = new(); // Initialized in CreateRoom by cloning defaults.
 
-        public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
-        public DateTime LastUpdatedDate { get; set; }
-        public DateTime? StartTime { get; set; }
-        public DateTime? EndTime { get; set; }
+        // Icons not yet assigned in this room. Initialized in CreateRoom by cloning the defaults.
+        public List<string> AvailableIcons { get; set; } = new();
+
         public int TimeoutMinutes { get; set; } = 10;
-        public int MaxPlayers { get; set; } = 5;
-        public string? WinningUser { get; set; }
-        public TimeSpan? WinningTime { get; set; }
-        public Dictionary<string, int> TypingSpeeds { get; set; } = new();
-        public List<string> Spectators { get; set; } = new();
-        public bool AllowSpectators { get; set; } = false;
 
-        public enum RoomStatus { Waiting, InProgress, Completed, Expired }
+        public enum RoomStatus { Waiting, InProgress }
         public RoomStatus Status { get; set; } = RoomStatus.Waiting;
 
-        public enum Difficulty { Easy, Medium, Hard }
-        public Difficulty DifficultyLevel { get; set; } = Difficulty.Medium;
-
-        public string Language { get; set; } = "English";
-
-        public bool IsActive => Status == RoomStatus.InProgress || Status == RoomStatus.Waiting;
-
+        /// <summary>
+        /// Starts (or restarts) the inactivity timer. Any previously started timer is cancelled,
+        /// so the room is only removed if no new timer is started within <paramref name="timeout"/>.
+        /// </summary>
         public void StartTimeout(TimeSpan timeout, Action<string> removeRoomCallback)
         {
+            CancellationToken token;
+            lock (this)
+            {
+                // A cancelled token source can't be reused, so every timer gets a fresh one.
+                _timeoutTokenSource.Cancel();
+                _timeoutTokenSource = new CancellationTokenSource();
+                token = _timeoutTokenSource.Token;
+            }
+
             Task.Run(async () =>
             {
                 try
                 {
-                    await Task.Delay(timeout, _cancellationTokenSource.Token);
+                    await Task.Delay(timeout, token);
                     removeRoomCallback(Id);
                 }
                 catch (TaskCanceledException)
                 {
-                    // Timeout reset or room is still active.
+                    // A newer timer replaced this one.
                 }
             });
         }
-
-        public void ResetTimeout()
-        {
-            _cancellationTokenSource.Cancel();
-        }
     }
-
 }

@@ -1,4 +1,4 @@
-﻿// Existing JavaScript code (SignalR setup and game logic) remains the same.
+// Client-side game logic: SignalR messaging, race track rendering and typing checks.
 const connection = new signalR.HubConnectionBuilder()
     .withUrl("/typingHub")
     .build();
@@ -7,12 +7,12 @@ let roomId = "";
 let textToType = "";
 let username = "";
 let score = 0;
-let playerCars = {};
-let timers = {};
+let playerCars = {};      // username -> car element on the race track
+let timers = {};          // username -> interval id of that player's timer
 let carIndex = 0;
 let isCreator = false;
 let gameStarted = false;
-let completionTimes = {};
+let completionTimes = {}; // username -> finish time as "mm:ss"
 
 // Helper: update status text
 function updateStatus(status) {
@@ -21,35 +21,42 @@ function updateStatus(status) {
     statusElement.style.display = "block";
 }
 
-connection.on("RoomCreated", (id, text, userIcons) => {
-    roomId = id;
+// Helper: set up the game area once the server confirms we are in a room (created or joined).
+function enterRoom(text, userIcons) {
     textToType = text;
-    document.getElementById("gameText").innerText = text;
+    const gameTextElement = document.getElementById("gameText");
+    gameTextElement.innerText = text;
+    // Keep the paragraph blurred until the countdown starts.
+    gameTextElement.classList.add("blurred");
     document.getElementById("gameArea").style.display = "flex";
-    document.getElementById("roomIdText").innerText = id;
-    document.getElementById("roomIdDisplay").style.display = "flex";
-    isCreator = true;
-    document.getElementById("startGameButton").style.display = "block";
-    updateStatus("Waiting"); // Update status on room creation
+    disableRoomButtons();
+    updateStatus("Waiting");
 
     for (const [user, icon] of Object.entries(userIcons)) {
         addCar(user, icon);
     }
+}
+
+connection.on("RoomCreated", (id, text, userIcons) => {
+    roomId = id;
+    isCreator = true;
+    enterRoom(text, userIcons);
+    document.getElementById("roomIdText").innerText = id;
+    document.getElementById("roomIdDisplay").style.display = "flex";
+    document.getElementById("startGameButton").style.display = "block";
 });
 
 connection.on("RoomJoined", (text, userIcons) => {
-    textToType = text;
-    document.getElementById("gameText").innerText = text;
-    document.getElementById("gameArea").style.display = "flex";
-    updateStatus("Waiting"); // Update status when joining a room
-
-    for (const [user, icon] of Object.entries(userIcons)) {
-        addCar(user, icon);
-    }
+    enterRoom(text, userIcons);
 });
 
 connection.on("UserJoined", (user, icon) => {
     addCar(user, icon);
+});
+
+connection.on("NewTextGenerated", (newText) => {
+    textToType = newText;
+    document.getElementById("gameText").innerText = newText;
 });
 
 connection.on("UpdateScores", (scores) => {
@@ -69,9 +76,9 @@ connection.on("UpdateScores", (scores) => {
     }
 });
 
-connection.on("WinnerAnnounced", (winner, time) => {
-    completionTimes[winner] = time;
-    stopTimer(winner);
+connection.on("PlayerFinished", (player) => {
+    stopTimer(player);
+    // The race is over once every player on the track has finished.
     if (Object.keys(completionTimes).length === Object.keys(playerCars).length) {
         showRankings();
         resetGame();
@@ -83,9 +90,9 @@ connection.on("StartCountdown", () => {
     const countdownElement = document.getElementById("countdown");
     const gameTextElement = document.getElementById("gameText");
 
-    // Apply blur effect when countdown starts
+    // Reveal the paragraph when the countdown starts
     gameTextElement.classList.remove("blurred");
-    updateStatus("In Progress"); // Update status when the game starts
+    updateStatus("In Progress");
 
     countdownElement.innerText = countdown;
     const interval = setInterval(() => {
@@ -104,34 +111,20 @@ connection.on("Error", (message) => {
     alert(message);
 });
 
-// Start connection and check URL for room parameter.
+// Start the connection. If the page was opened from an invite link (?room=<id>), join that room right away.
 connection.start()
     .then(() => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const roomParam = urlParams.get("room");
-        if (roomParam) {
-            roomId = roomParam;
-            // Assign the extracted roomId to the room input box for visibility.
-            const roomInputBox = document.getElementById("roomInput");
-            if (roomInputBox) {
-                roomInputBox.value = roomId;
-            }
-            // Get username either from localStorage or prompt the user.
-            username = prompt("Enter your username:");
-            if (!username) {
-                alert("Username is required to join the room.");
-                return;
-            }
-            localStorage.setItem("username", username);
-            // Automatically join the room.
-            connection.invoke("JoinRoom", roomId, username)
-                .then(() => {
-                    disableRoomButtons();
-                    // Optionally, blur the game text until the game starts.
-                    document.getElementById("gameText").classList.add("blurred");
-                })
-                .catch(err => console.error(err));
+        const roomParam = new URLSearchParams(window.location.search).get("room");
+        if (!roomParam) return;
+
+        document.getElementById("roomInput").value = roomParam;
+        const enteredName = prompt("Enter your username:");
+        if (!enteredName) {
+            alert("Username is required to join the room.");
+            return;
         }
+        document.getElementById("usernameInput").value = enteredName;
+        joinRoom();
     })
     .catch(err => console.error(err));
 
@@ -141,13 +134,7 @@ function createRoom() {
         alert("Please enter a username.");
         return;
     }
-    connection.invoke("CreateRoom", username)
-        .then(() => {
-            disableRoomButtons(); // Disable controls after successfully creating a room
-            const gameTextElement = document.getElementById("gameText");
-            gameTextElement.classList.add("blurred");
-        })
-        .catch(err => console.error(err));
+    connection.invoke("CreateRoom", username).catch(err => console.error(err));
 }
 
 function joinRoom() {
@@ -156,14 +143,9 @@ function joinRoom() {
         alert("Please enter a username.");
         return;
     }
-    roomId = document.getElementById("roomInput").value;
-    connection.invoke("JoinRoom", roomId, username)
-        .then(() => {
-            disableRoomButtons(); // Disable controls after successfully creating a room
-            const gameTextElement = document.getElementById("gameText");
-            gameTextElement.classList.add("blurred");
-        })
-        .catch(err => console.error(err));
+    roomId = document.getElementById("roomInput").value.trim();
+    // Controls are only disabled once the server confirms with "RoomJoined", so the user can retry after an error.
+    connection.invoke("JoinRoom", roomId, username).catch(err => console.error(err));
 }
 
 function startGame() {
@@ -182,7 +164,9 @@ function startGameForAll() {
 
 function checkTyping() {
     if (!gameStarted) return;
-    let typedText = document.getElementById("typingArea").value;
+    const typingArea = document.getElementById("typingArea");
+    let typedText = typingArea.value;
+    // Score is the length of the correctly typed prefix; typing stops counting at the first mistake.
     let correctLength = 0;
     for (let i = 0; i < typedText.length; i++) {
         if (typedText[i] === textToType[i]) {
@@ -195,11 +179,14 @@ function checkTyping() {
     document.getElementById("score").innerText = score;
     const gameText = document.getElementById("gameText");
     gameText.innerHTML = `<strong>${textToType.substring(0, correctLength)}</strong>${textToType.substring(correctLength)}`;
-    const typingArea = document.getElementById("typingArea");
     if (typedText.length > correctLength) {
         typingArea.style.borderColor = "red";
     } else {
         typingArea.style.borderColor = "";
+    }
+    // Stop accepting input once the paragraph is finished, so the finish is only reported once.
+    if (score >= textToType.length) {
+        typingArea.disabled = true;
     }
     connection.invoke("UpdateProgress", roomId, username, score).catch(err => console.error(err));
 }
@@ -278,15 +265,12 @@ function resetGame() {
         document.getElementById("startGameButton").disabled = false;
         document.getElementById("startGameButton").style.display = "block";
     }
-    document.getElementById("gameText").innerHTML = textToType;
+    document.getElementById("gameText").innerText = textToType;
     for (const user in playerCars) {
         playerCars[user].style.left = "0%";
         document.getElementById(`timer-${user}`).innerText = "00:00";
     }
     completionTimes = {};
-    if (isCreator) {
-        document.getElementById("startGameButton").style.display = "block";
-    }
     updateStatus("Waiting");
 }
 
@@ -296,6 +280,7 @@ function copyRoomId() {
         alert("Room ID copied to clipboard!");
     });
 }
+
 function inviteFriend() {
     if (roomId === "") {
         alert("Room is not created yet!");
@@ -307,6 +292,7 @@ function inviteFriend() {
         alert("Invite link copied to clipboard!");
     }).catch(err => console.error(err));
 }
+
 function disableRoomButtons() {
     // Disable input fields
     document.getElementById("usernameInput").disabled = true;
@@ -315,7 +301,3 @@ function disableRoomButtons() {
     document.getElementById("createRoomButton").disabled = true;
     document.getElementById("joinRoomButton").disabled = true;
 }
-connection.on("NewTextGenerated", (newText) => {
-    textToType = newText;
-    document.getElementById("gameText").innerText = newText;
-});
